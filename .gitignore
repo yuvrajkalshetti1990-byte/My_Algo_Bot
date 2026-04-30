@@ -1,5 +1,6 @@
 # Secrets — NEVER commit
 access_token.txt
+config.py
 
 # Logs (large files)
 *.log

@@ -52,6 +52,11 @@ source .venv/bin/activate
 pip install -r requirements.txt  # (if exists, else manually):
 pip install fyers-apiv3 pandas streamlit ta-lib
 
+# Configure API credentials
+cp config.example.py config.py
+# Edit config.py with your real Fyers credentials (CLIENT_ID, SECRET_KEY)
+# ⚠️ NEVER commit config.py to git — it's excluded via .gitignore
+
 # Login & get API token
 python3 1_login_test.py
 # Follow Fyers OAuth flow, token saved to access_token.txt
@@ -63,6 +68,24 @@ streamlit run yuvi_dashboard.py --server.port 8502
 ```
 
 Navigate to `http://localhost:8502`
+
+## 🔐 Security
+
+**Protected Files** (excluded via `.gitignore`):
+- `config.py` — Contains CLIENT_ID, SECRET_KEY for Fyers API
+- `access_token.txt` — OAuth access token (auto-refreshed)
+- `*.log` — May contain API responses
+
+**Setup Instructions**:
+1. Copy `config.example.py` → `config.py`
+2. Add your real Fyers API credentials to `config.py`
+3. NEVER commit `config.py` or `access_token.txt` to git
+
+**⚠️ IMPORTANT**: If you accidentally committed credentials:
+1. **Immediately** rotate/invalidate them on Fyers Dashboard
+2. Update `config.py` with new credentials locally
+3. Verify `.gitignore` excludes `config.py`
+4. Consider cleaning git history: `git filter-branch` or BFG Repo-Cleaner
 
 ## Configuration
 
