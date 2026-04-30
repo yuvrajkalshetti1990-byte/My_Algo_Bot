@@ -15,6 +15,11 @@ from yuvi_indicators import (
     calc_regime, calc_ttype, proc_signal,
 )
 from yuvi_trade_manager import TradeManager
+from yuvi_export import (
+    is_cloud_mode, get_mode_banner, export_daily_data, export_candle_data,
+    get_available_dates, load_historical_trades, load_historical_candles,
+    auto_export_on_market_close
+)
 
 # ─────────────────────────────────────────────────────────────────────────────
 # PAGE CONFIG & GLOBAL CSS
@@ -356,6 +361,53 @@ with st.sidebar:
 _apply_runtime_cfg()
 
 # ─────────────────────────────────────────────────────────────────────────────
+# CLOUD MODE DETECTION & CONTROLS
+# ─────────────────────────────────────────────────────────────────────────────
+CLOUD_MODE = is_cloud_mode()
+
+# Show mode banner
+st.markdown(get_mode_banner(), unsafe_allow_html=True)
+
+# Cloud mode: Add date selector in sidebar
+if CLOUD_MODE:
+    with st.sidebar:
+        st.markdown("<hr class='sec-divider'>", unsafe_allow_html=True)
+        with st.expander("📅 HISTORICAL DATA", expanded=True):
+            available_dates = get_available_dates()
+            if available_dates:
+                selected_date = st.selectbox(
+                    "Select Date",
+                    options=available_dates,
+                    index=0,
+                    help="Choose a date to view historical trading data"
+                )
+                st.session_state.selected_historical_date = selected_date
+                st.info(f"Viewing data from: {selected_date}")
+            else:
+                st.warning("⚠️ No historical data found. Upload CSV files to `historical_data/` folder.")
+                st.session_state.selected_historical_date = None
+
+# Local mode: Add export button
+else:
+    with st.sidebar:
+        st.markdown("<hr class='sec-divider'>", unsafe_allow_html=True)
+        with st.expander("💾 EXPORT DATA", expanded=False):
+            st.markdown("Export today's data for cloud sharing")
+            if st.button("📤 Export to CSV", use_container_width=True):
+                today_str = datetime.now().strftime("%Y-%m-%d")
+                success = export_daily_data(
+                    st.session_state.trade_log,
+                    tm._strike_states if hasattr(tm, '_strike_states') else {},
+                    today_str
+                )
+                if hasattr(st.session_state, 'last_data') and st.session_state.last_data:
+                    export_candle_data(st.session_state.last_data, today_str)
+                if success:
+                    st.success(f"✅ Exported data for {today_str}")
+                else:
+                    st.error("❌ Export failed")
+
+# ─────────────────────────────────────────────────────────────────────────────
 # HEADER BAR
 # ─────────────────────────────────────────────────────────────────────────────
 now_dt = datetime.now()
@@ -436,15 +488,62 @@ def _build_bar_at(dfs, i, sc, row, prev_row, df_slice, bar_dt):
 
 
 def fetch_and_process(dry_run=False):
-    try:
-        fyers = get_fyers_client()
-    except RuntimeError as e:
-        st.session_state.error_msg = str(e)
-        return None, None
-    st.session_state.error_msg = None
+    """Fetch and process data - supports both live API and historical CSV modes."""
+    
+    # ── CLOUD MODE: Load historical data from CSV ─────────────────────────
+    if CLOUD_MODE:
+        selected_date = st.session_state.get('selected_historical_date')
+        if not selected_date:
+            st.session_state.error_msg = "No historical date selected"
+            return None, None
+        
+        st.session_state.error_msg = None
+        
+        with st.spinner(f"Loading historical data from {selected_date}..."):
+            all_data = []
+            for sc in cfg.STRIKES:
+                if not sc["enabled"]:
+                    all_data.append(None)
+                    continue
+                
+                strike_key = f"{sc['strike']}_straddle"
+                df = load_historical_candles(strike_key, selected_date)
+                
+                if df is not None:
+                    all_data.append({"combined": df})
+                else:
+                    all_data.append(None)
+        
+        # Load historical trades and display them (no replay in cloud mode)
+        hist_trades = load_historical_trades(selected_date)
+        if hist_trades:
+            st.session_state.trade_log = hist_trades
+        else:
+            st.session_state.trade_log = []
+        
+        # Mark as replayed to prevent re-processing
+        st.session_state._replayed_date = f"{selected_date}_historical"
+    
+    # ── LOCAL MODE: Fetch live data from Fyers API ────────────────────────
+    else:
+        try:
+            fyers = get_fyers_client()
+        except RuntimeError as e:
+            st.session_state.error_msg = str(e)
+            return None, None
+        st.session_state.error_msg = None
 
-    with st.spinner("Fetching option data from Fyers..."):
-        all_data = fetch_all_strikes(fyers)
+        with st.spinner("Fetching option data from Fyers..."):
+            all_data = fetch_all_strikes(fyers)
+        
+        # Auto-export at market close (15:30 IST)
+        if hasattr(st.session_state, 'trade_log') and hasattr(tm, '_strike_states'):
+            auto_export_on_market_close(
+                st.session_state.trade_log,
+                tm._strike_states,
+                {f"{sc['strike']}_straddle": data.get("combined") if data else None 
+                 for sc, data in zip(cfg.STRIKES, all_data)}
+            )
 
     today = datetime.now().date()
 
