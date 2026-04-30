@@ -1,0 +1,28 @@
+# Secrets — NEVER commit
+access_token.txt
+
+# Logs (large files)
+*.log
+fyersApi.log
+fyersRequests.log
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+
+# Virtual environment
+.venv/
+venv/
+env/
+
+# macOS
+.DS_Store
+
+# VS Code
+.vscode/
+
+# Data / temp
+stoxxo_data.csv
