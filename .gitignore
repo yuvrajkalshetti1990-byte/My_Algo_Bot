@@ -1,6 +1,7 @@
 # Secrets — NEVER commit
 access_token.txt
 config.py
+.streamlit/secrets.toml
 
 # Logs (large files)
 *.log
